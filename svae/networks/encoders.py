@@ -85,9 +85,10 @@ class SigmaEncoder(Module):
     loc_norm_cls: Optional[ModuleDef] = None #partial(nn.BatchNorm, momentum=0.9)
     scale_norm_cls: Optional[ModuleDef] = None #partial(nn.BatchNorm, momentum=0.9)
     preserve_compat: bool = True
+    month_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, eval_mode = False, mask=None):
+    def __call__(self, x, month=None, eval_mode = False, mask=None):
         loc = self.network_cls(self.latent_D, eval_mode=eval_mode)(x, mask=mask)
         inv_scale = self.param('scale', nn.initializers.normal(), loc.shape[-1:], loc.dtype)
         inv_scale = inv_scale.reshape([1] * (len(loc.shape) - 1) + [-1]) * jnp.ones_like(loc)

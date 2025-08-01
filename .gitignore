@@ -2,3 +2,7 @@
 *.pyc
 **/misc/
 **/saved_models/
+**/saved_model/
+**/wandb/
+**/slurm/
+*.pdf

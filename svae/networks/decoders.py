@@ -5,7 +5,7 @@ from jax import custom_vjp
 import flax
 from flax import linen as nn           # The Linen API
 from flax.training import train_state  # Useful dataclass to keep train state
-
+from flax.linen import Dense
 import numpy as np                     # Ordinary NumPy
 
 from tensorflow_probability.substrates import jax as tfp
@@ -17,7 +17,7 @@ from dataclasses import field
 
 import tqdm
 from functools import partial
-from jax.config import config 
+# from jax.config import config 
 from jax.scipy.special import logsumexp
 import jax.scipy as jsp
 from jax.tree_util import register_pytree_node_class
@@ -73,9 +73,10 @@ class SigmaDecoder(nn.Module):
     n_outputs: int = 3
     network_cls: ModuleDef = partial(DenseNet, norm_cls=None)
     likelihood: Distribution = tfd.Normal
+    month_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, eval_mode = False):
+    def __call__(self, x, month=None,eval_mode = False):
         dev = self.param('dev', nn.initializers.ones, # Initialization function
                             (self.n_outputs,), x.dtype)
         z_mean = self.network_cls(self.n_outputs, eval_mode=eval_mode)(x)

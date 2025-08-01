@@ -17,7 +17,7 @@ from jax import nn
 import jax
 import tensorflow_probability.substrates.jax.distributions as tfd
 from tensorflow_probability.substrates.jax.math import log_cumsum_exp
-from numpy import infty, identity
+from numpy import inf as infty, identity
 
 def jit(x, *args, **kwargs):
     return x
@@ -241,7 +241,7 @@ def lds_inference_and_sample(recog_potentials, init, transition_params, key):
     return (EXXTs, EXs, EXXNTs), logZ, zs
 
 @jit
-def lds_inference_homog(recog_potentials, init, transition_params):
+def lds_inference_homog(recog_potentials, init, transition_params, cond_on_month=False):
     N = recog_potentials[0].shape[0]
     def rep(param):
         return tile(param, (N-1,1,1))
@@ -465,7 +465,7 @@ def slds_sample(global_natparams, n_sample, forecast_rng, cat_forecast=None):
 
     return lds_sample(niw_nat, mniw_nat, n_sample, lds_rng, hmm_extend)
 
-def lds_forecast(final_Z, mniw_params, forecast_length, rng):
+def lds_forecast(final_Z, mniw_params, forecast_length, rng, cond_on_month=False):
     key, subkey = split(rng)
     precision, X = jax.tree_map(lambda x: x[0], mniw.sample(mniw_params, key))
     var = inv_pd(precision)

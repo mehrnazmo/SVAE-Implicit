@@ -6,6 +6,7 @@ from typing import Callable, Optional, Any, Sequence
 from distributions import normal
 from functools import partial
 import jax.numpy as jnp
+from jax.nn import sigmoid
 from tensorflow_probability.substrates.jax import distributions as tfd
 from .sequence import SimpleLSTM, SimpleBiLSTM, ReverseLSTM
 
@@ -51,6 +52,7 @@ class DenseNet(nn.Module):
     lstm_hidden_size: int = 64
     scale_input: float = 1.
     scale_output: float = 1.
+    last_layer_sigmoid: bool = False 
 
     @nn.compact
     def __call__(self, x, mask=None):
@@ -84,5 +86,7 @@ class DenseNet(nn.Module):
             x = self.lstm_cls(self.lstm_hidden_size)(x, mask=mask)
 
         x = nn.Dense(self.n_outputs, dtype=self.dtype)(x)
+        if self.last_layer_sigmoid:
+            x = sigmoid(x)
         return x * self.scale_output
     

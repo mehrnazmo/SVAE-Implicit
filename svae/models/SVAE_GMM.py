@@ -1,7 +1,9 @@
-from jax import tree_map, vmap
+import jax
+import jax.numpy as jnp
+from jax.tree_util import tree_map
+from jax import vmap
 from jax.lax import stop_gradient
 from jax.random import split
-import jax.numpy as jnp
 from flax.linen import compact, initializers, softplus, Module
 from distributions import mniw, niw, dirichlet, normal
 from utils import softminus, T, make_prior_fun, mask_potentials, straight_through, straight_through_tuple, corr_param_inv, inject_mingrads_pd

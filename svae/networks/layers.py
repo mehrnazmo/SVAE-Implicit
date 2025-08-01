@@ -16,7 +16,7 @@ tfpk = tfp.math.psd_kernels
 
 import tqdm
 from functools import partial
-from jax.config import config 
+# from jax.config import config 
 from jax.scipy.special import logsumexp
 
 from functools import partial

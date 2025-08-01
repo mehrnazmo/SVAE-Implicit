@@ -29,6 +29,7 @@ class PGM_LDS(Module):
     loc_init_sd: float = 0.2
     inf32: bool = True
     point_est: bool = False
+    cond_on_month: bool = True
 
     def setup(self):
         ### PRIORS
@@ -266,8 +267,9 @@ class SVAE_LDS(Module):
         self.decoder = self.decoder_cls(self.input_D, name="decoder")
 
     @compact
-    def __call__(self, x, eval_mode=False, mask=None, n_iwae_samples=0, theta_rng=None, n_forecast = 0, n_samples = 1, fixed_samples = None):
-
+    def __call__(self, x, month=None, eval_mode=False, mask=None, n_iwae_samples=0, 
+                 theta_rng=None, n_forecast = 0, n_samples = 1, fixed_samples = None):
+        # x: (bs, T, 26*90)
         if self.log_input:
             x = jnp.log(x)
 
@@ -276,8 +278,9 @@ class SVAE_LDS(Module):
             mask = jnp.where(mask > 0, jnp.ones_like(mask), jnp.zeros_like(mask))
 
         x_input = jnp.where(jnp.expand_dims(mask, -1), x, jnp.zeros_like(x)) if mask is not None else x
-        recog_potentials = self.encoder(x_input, eval_mode = eval_mode, mask=mask)
-
+        recog_potentials = self.encoder(x_input, month=month, eval_mode = eval_mode, mask=mask)
+        # x_input: (bs, T, 26*90)
+        # recog_potentials: (bs, T, D, D) (bs, T, D, 1)
         if mask is not None:
             recog_potentials = mask_potentials(recog_potentials, mask)
 
@@ -287,14 +290,15 @@ class SVAE_LDS(Module):
             with jax.default_matmul_precision('float32'):
                 iwae_fun = vmap(self.pgm.iwae, in_axes=[0,0,None,None])
                 z, prior_kl, local_kl = iwae_fun(recog_potentials, key, theta_rng, n_iwae_samples)
-            likelihood = self.decoder(z, eval_mode=eval_mode)
+            likelihood = self.decoder(z, month=month, eval_mode=eval_mode)
             # z will be B x N_iwae_samples x T x D; kl will be B x N_iwae_samples
             return likelihood, prior_kl, local_kl, z
 
         with jax.default_matmul_precision('float32'):
             pgm_fun = vmap(self.pgm, in_axes=[0,0,None, None])
             z, aux, prior_kl, local_kl, sur_loss = pgm_fun(recog_potentials, key, n_forecast, n_samples)
-
+        #z: (bs, T, D)
+        #prior_kl, local_kl, sur_loss: (bs,), (bs,), (bs,)
         prior_kl, local_kl, sur_loss = prior_kl.mean(), local_kl.sum(), sur_loss.sum()
 
         if self.autoreg:
@@ -307,9 +311,10 @@ class SVAE_LDS(Module):
                 self_decoder_mask = mask[...,:-1]#.at[...,1:].set(mask[...,:-1]).at[...,0].set(1)
 
             likelihood = self.decoder(x.astype(jnp.float32)[...,:-1,:], 
-                                      z.astype(jnp.float32), eval_mode=eval_mode, mask = self_decoder_mask)
+                                      z.astype(jnp.float32), month=month, eval_mode=eval_mode, mask = self_decoder_mask)
         else:
-            likelihood = self.decoder(z.astype(jnp.float32), eval_mode=eval_mode)
+            likelihood = self.decoder(z.astype(jnp.float32), month=month, eval_mode=eval_mode)
+        # (z, sur_loss, gaus_expected_stats)
         return likelihood, prior_kl, local_kl, (z, sur_loss) + aux
 
 def uton_allparams(state):
