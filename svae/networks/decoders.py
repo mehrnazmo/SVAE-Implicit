@@ -76,9 +76,18 @@ class SigmaDecoder(nn.Module):
     month_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, month=None,eval_mode = False):
+    def __call__(self, x, month=None, eval_mode = False):
         dev = self.param('dev', nn.initializers.ones, # Initialization function
                             (self.n_outputs,), x.dtype)
+        if self.month_embedding and (month is not None):
+            #x, month_contribution: (Bs, T, D)
+            month_contribution = Dense(x.shape[-1], name='month_dense')(month)
+            T = month_contribution.shape[1]
+            T_target = x.shape[1]
+            if  T != T_target: #forecasting: T_target > T
+                tile_len = T_target // T
+                month_contribution = jnp.tile(month_contribution, (1, tile_len, 1))[:, :T_target]
+            x = x + month_contribution
         z_mean = self.network_cls(self.n_outputs, eval_mode=eval_mode)(x)
         if eval_mode:
             return tfd.Normal(z_mean, nn.softplus(dev))

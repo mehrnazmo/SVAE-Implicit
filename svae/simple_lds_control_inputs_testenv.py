@@ -114,8 +114,6 @@ encoder_norm = 'layer'
 decoder_norm = 'layer'
 encoder_loc_norm = 'none'
 encoder_scale_norm = 'none'
-# encoder_skip_connection = False
-# decoder_skip_connection = False
 validate = True
 
 encoder_month_embedding = False
@@ -177,7 +175,6 @@ decoder_network = partial(DenseNet, resnet=resnet,
                          )
 
 encoder = partial(SigmaEncoder, network_cls=encoder_network,
-                #   skip_connection=encoder_skip_connection,
                   loc_norm_cls=norms[encoder_loc_norm],
                   scale_norm_cls=norms[encoder_scale_norm],
                   month_embedding=encoder_month_embedding,
@@ -186,7 +183,6 @@ encoder = partial(SigmaEncoder, network_cls=encoder_network,
 
 decoder = partial(SigmaDecoder, network_cls=decoder_network,
                   likelihood=tfd.Normal,
-                #   skip_connection=decoder_skip_connection,
                   month_embedding=decoder_month_embedding,
                  )
 
@@ -314,7 +310,7 @@ for epoch in range(cfg.num_epochs):
         prior_mu = tau_mu/tau
         
         qp_mean_squared_dist = jnp.sum(((EX_0 - prior_mu[0])**2)) / (prior_mu[0]).shape[0]
-        print(local_kl)
+        # print(local_kl)
 
         
         wandb.log({'training_loss': loss, 'local_kl': local_kl, 
