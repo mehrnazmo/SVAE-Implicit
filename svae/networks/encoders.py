@@ -88,9 +88,9 @@ class SigmaEncoder(Module):
     month_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, month=None, eval_mode = False, mask=None):
-        if self.month_embedding and (month is not None):
-            x = x + Dense(x.shape[-1], name='month_dense')(month)
+    def __call__(self, x, month_encoding=None, eval_mode = False, mask=None):
+        if self.month_embedding and (month_encoding is not None):
+            x = x + Dense(x.shape[-1], name='month_dense')(month_encoding)
         loc = self.network_cls(self.latent_D, eval_mode=eval_mode)(x, mask=mask)
         inv_scale = self.param('scale', nn.initializers.normal(), loc.shape[-1:], loc.dtype)
         inv_scale = inv_scale.reshape([1] * (len(loc.shape) - 1) + [-1]) * jnp.ones_like(loc)
@@ -108,7 +108,7 @@ class SigmaEncoder(Module):
         
         all_scale = []
         for s in jnp.split(inv_scale, self.groups, axis=-1):
-            if x.ndim == 3:
+            if x.ndim == 3 or x.ndim == 4:
                 all_scale.append(-1/2 * vmap(vmap(diag))(s))
             else:
                 all_scale.append(-1/2 * vmap(diag)(s))

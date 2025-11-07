@@ -13,6 +13,7 @@ import numpy as np
 from jax.random import dirichlet
 import jax
 from jax.experimental import host_callback
+from jax import debug
 from utils import wandb_log, wandb_log_internal
 
 MAX_ITER = 10
@@ -271,7 +272,7 @@ def slds_inference_implicit_fwd(recog_potentials, E_mniw_params, init, E_init_no
 
     # Log convergence metrics
     # host_callback.id_tap(lambda arg, _: print(('Shapes:', arg[0].shape, arg[1].shape)), (kl - old_kl, i < MAX_ITER))
-    host_callback.id_tap(lambda arg, _: wandb_log_internal(dict(coordinate_ascent_tol=jnp.max(jnp.abs(arg[0])), nconverged=jnp.mean(arg[1]))), ((kl - old_kl)/old_kl, i < MAX_ITER))
+    debug.callback(lambda arg: wandb_log_internal(dict(coordinate_ascent_tol=jnp.max(jnp.abs(arg[0])), nconverged=jnp.mean(arg[1]))), ((kl - old_kl)/old_kl, i < MAX_ITER))
     all_args = recog_potentials, E_mniw_params, init, E_init_normalizer, E_init_lps, E_trans_lps, gaus_expected_stats, cat_expected_stats, gaus_natparam, cat_natparam, messages, i
 
     return (gaus_expected_stats, cat_expected_stats), all_args
@@ -357,12 +358,12 @@ def slds_inference_itersolve_bwd(resids, grads):
         output = square_vjp_fun(full_grads)
         resid = jax.tree_map(lambda x,y,z: x+y-z, grads, output, full_grads)
         resid_rmse = jnp.sqrt(jnp.mean(jax.flatten_util.ravel_pytree(resid)[0] ** 2))
-        host_callback.id_tap(lambda resid, _: wandb_log_internal(dict(richardson_resid=jnp.max(resid))), resid_rmse)
+        debug.callback(lambda resid: wandb_log_internal(dict(richardson_resid=jnp.max(resid))), resid_rmse)
     #     host_callback.id_tap(lambda resid, _: print(resid.shape), resid_rmse) # TODO remove
 
         cond = jnp.bitwise_or((resid_rmse > RICHARDSON_CLIPPING_THRESH) | jnp.isnan(resid_rmse), maxiter == MAX_ITER)
         full_grads = jax.tree_map(lambda a, b: jnp.where(cond, a, b), grads, full_grads)        
-        host_callback.id_tap(lambda c, _: wandb_log_internal(dict(richardson_unconv=jnp.mean(c))), cond)
+        debug.callback(lambda c: wandb_log_internal(dict(richardson_unconv=jnp.mean(c))), cond)
 
         vjp_fun = parallel_update_global_vjp(*pu_args)[1]
         return vjp_fun(full_grads) + (None,)
@@ -518,7 +519,7 @@ def sm_slds_inference_implicit_fwd(recog_potentials, E_mniw_params, init, E_init
 
     # Log convergence metrics
     # host_callback.id_tap(lambda arg, _: print(('Shapes:', arg[0].shape, arg[1].shape)), (kl - old_kl, i < MAX_ITER))
-    host_callback.id_tap(lambda arg, _: wandb_log_internal(dict(coordinate_ascent_tol=jnp.max(jnp.abs(arg[0])), nconverged=jnp.mean(arg[1]))), ((kl - old_kl)/old_kl, i < MAX_ITER))
+    debug.callback(lambda arg: wandb_log_internal(dict(coordinate_ascent_tol=jnp.max(jnp.abs(arg[0])), nconverged=jnp.mean(arg[1]))), ((kl - old_kl)/old_kl, i < MAX_ITER))
     all_args = recog_potentials, E_mniw_params, init, E_init_normalizer, E_init_lps, E_trans_lps, E_self_trans_lps, gaus_expected_stats, cat_expected_stats, i
 
     return (gaus_expected_stats, cat_expected_stats), all_args
@@ -576,12 +577,12 @@ def sm_slds_inference_itersolve_bwd(resids, grads):
         output = square_vjp_fun(full_grads)
         resid = jax.tree_map(lambda x,y,z: x+y-z, grads, output, full_grads)
         resid_rmse = jnp.sqrt(jnp.mean(jax.flatten_util.ravel_pytree(resid)[0] ** 2))
-        host_callback.id_tap(lambda resid, _: wandb_log_internal(dict(richardson_resid=jnp.max(resid))), resid_rmse)
+        debug.callback(lambda resid: wandb_log_internal(dict(richardson_resid=jnp.max(resid))), resid_rmse)
     #     host_callback.id_tap(lambda resid, _: print(resid.shape), resid_rmse) # TODO remove
 
         cond = jnp.bitwise_or((resid_rmse > RICHARDSON_CLIPPING_THRESH) | jnp.isnan(resid_rmse), maxiter == MAX_ITER)
         full_grads = jax.tree_map(lambda a, b: jnp.where(cond, a, b), grads, full_grads)        
-        host_callback.id_tap(lambda c, _: wandb_log_internal(dict(richardson_unconv=jnp.mean(c))), cond)
+        debug.callback(lambda c: wandb_log_internal(dict(richardson_unconv=jnp.mean(c))), cond)
 
         vjp_fun = sm_parallel_update_global_vjp(*pu_args)[1]
 

@@ -244,7 +244,10 @@ def lds_inference_and_sample(recog_potentials, init, transition_params, key):
 def lds_inference_homog(recog_potentials, init, transition_params, cond_on_month=False):
     N = recog_potentials[0].shape[0]
     def rep(param):
-        return tile(param, (N-1,1,1))
+        if cond_on_month:
+            return jnp.concatenate([param, param[:-1]], axis=0)
+        else:
+            return tile(param, (N-1,1,1))
     return lds_inference(recog_potentials, init, tree_map(rep, transition_params))
 
 def sample_mvn(mu, var, epsilon):
@@ -410,6 +413,13 @@ def hmm_forecast(final_probs, trans, key, forecast_length):
 
 def lds_forecast_iter(z, slices):
     A, b, var, epsilon = slices
+    # Apply stability constraint: clip eigenvalues to be < 1
+    # eigenvals, eigenvecs = jnp.linalg.eigh(A)
+    # Clip eigenvalues to be in range [-0.99, 0.99] for stability
+    
+    # eigenvals_clipped = jnp.clip(eigenvals, -0.99, 0.99)
+    # A_stable = eigenvecs @ jnp.diag(eigenvals_clipped) @ eigenvecs.T
+    
     z_next = jnp.matmul(A,z) + b + jnp.matmul(var, epsilon)
     return z_next, z_next
 
@@ -465,14 +475,54 @@ def slds_sample(global_natparams, n_sample, forecast_rng, cat_forecast=None):
 
     return lds_sample(niw_nat, mniw_nat, n_sample, lds_rng, hmm_extend)
 
-def lds_forecast(final_Z, mniw_params, forecast_length, rng, cond_on_month=False):
+def lds_forecast(final_Z, mniw_params, forecast_length, rng, cond_on_month=False, use_mean_params=True):
     key, subkey = split(rng)
-    precision, X = jax.tree_map(lambda x: x[0], mniw.sample(mniw_params, key))
-    var = inv_pd(precision)
-    A,b = X[:,:-1], X[:,-1]
     epsilon = rand_norm(key, (forecast_length,) + final_Z.shape)
-    full_A, full_var = jax.tree_map(lambda x: jnp.tile(x, (forecast_length, 1, 1)), (A,var))
-    full_b = jnp.tile(b, (forecast_length, 1))
+    
+    if use_mean_params:
+        # Use expected parameters instead of sampling for more stable forecasting
+        if cond_on_month:
+            # Get expected parameters for each month
+            E_precision, E_X = jax.vmap(mniw.expected_stats)(mniw_params)
+            precision = E_precision  # (12, D, D)
+            X = E_X  # (12, D, D+1)
+            var = inv_pd(precision)
+            A, b = X[:,:,:-1], X[:,:,-1] # (12, D, D) (12, D, 1)
+            
+            tile_len = (forecast_length + A.shape[0]) // A.shape[0]
+            full_A, full_var = jax.tree_map(
+                lambda x: jnp.tile(x, (tile_len, 1, 1))[:forecast_length], (A,var))
+            full_b = jnp.tile(b, (tile_len, 1))[:forecast_length]
+        else:
+            precision, X = mniw.expected_stats_forecast(mniw_params)
+            var = inv_pd(precision)
+            A, b = X[:,:-1], X[:,-1]
+            full_A, full_var = jax.tree_map(lambda x: jnp.tile(x, (forecast_length, 1, 1)), (A,var))
+            full_b = jnp.tile(b, (forecast_length, 1))
+    else:
+        # Original sampling approach
+        if cond_on_month:
+            precision, X = jax.vmap(mniw.sample, in_axes=(0, 0, None))(
+                mniw_params, jax.random.split(key, 12), 1)
+            # precision: (12, 1, D, D)
+            # X: (12, 1, D, D+1)
+            # var: (12, 1, D, D)
+            precision = precision.squeeze(1) # (12, D, D)
+            X = X.squeeze(1) # (12, D, D+1)
+            var = inv_pd(precision)
+            A,b = X[:,:,:-1], X[:,:,-1] # (12, D, D) (12, D, 1)
+            
+            tile_len = (forecast_length + A.shape[0]) // A.shape[0]
+            full_A, full_var = jax.tree_map(
+                lambda x: jnp.tile(x, (tile_len, 1, 1))[:forecast_length], (A,var))
+            full_b = jnp.tile(b, (tile_len, 1))[:forecast_length]
+        else:
+            precision, X = jax.tree_map(lambda x: x[0], mniw.sample(mniw_params, key))
+            var = inv_pd(precision)
+            A,b = X[:,:-1], X[:,-1]
+            full_A, full_var = jax.tree_map(lambda x: jnp.tile(x, (forecast_length, 1, 1)), (A,var))
+            full_b = jnp.tile(b, (forecast_length, 1))
+    
     slices = (full_A, full_b, full_var, epsilon)
     _, new_zs = scan(lds_forecast_iter, final_Z, slices)
     return new_zs

@@ -106,6 +106,14 @@ def sample(natparam, key, n=1):
     row_covar = inv_pd(V)
     return precision, tfd.MultivariateNormalFullCovariance(M.flatten(), kron(col_covar, row_covar)).sample(seed=key).reshape(output_shape)
 
+def expected_stats_forecast(natparam):
+    S, M, V, nu = nat_to_moment(natparam)
+    S_inv = inv_pd(S)
+    E_Lambda = nu * S_inv
+    E_X = M
+    return E_Lambda, E_X
+
+
 def sample_es(natparam, key, n=1):
     precision, X = sample(natparam, key, n)
     neg_half_lam = -1/2 * precision

@@ -6,3 +6,8 @@
 **/wandb/
 **/slurm/
 *.pdf
+.vscode/settings.json
+**/documents/
+**/sandbox/
+**/figs/
+**/data_files/

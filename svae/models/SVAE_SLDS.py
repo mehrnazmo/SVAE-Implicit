@@ -280,9 +280,20 @@ class PGM_SLDS(Module):
 
         # forecast
         if n_forecast > 0:
-            forecasted_z = slds_forecast(z[-1], cat_expected_stats, global_natparams[1], 
-                                         global_natparams[-1], n_forecast, forecast_rng)
-            z = jnp.concatenate([z, forecasted_z], -2)
+            if n_samples > 1:
+                # z shape: (n_samples, T, D), need last timestep of each sample
+                final_states = z[:, -1, :]  # (n_samples, D)
+                # Use vmap to forecast each sample independently
+                forecasted_z = vmap(lambda final_state, rng: slds_forecast(
+                    final_state, cat_expected_stats, global_natparams[1], 
+                    global_natparams[-1], n_forecast, forecast_rng))(
+                    final_states, split(forecast_rng, n_samples))
+                # forecasted_z shape: (n_samples, T+n_forecast, D)
+                z = jnp.concatenate([z, forecasted_z], axis=1)  # concatenate along time dimension
+            else:
+                forecasted_z = slds_forecast(z[-1], cat_expected_stats, global_natparams[1], 
+                                            global_natparams[-1], n_forecast, forecast_rng)
+                z = jnp.concatenate([z, forecasted_z], -2)
 
         return z, (gaus_expected_stats, cat_expected_stats), prior_kl, local_kl, sur_loss
 
@@ -406,7 +417,7 @@ class SVAE_SLDS(Module):
         self.pgm = PGM_SLDS(self.latent_D, self.K, self.inference_fun, name="pgm", **self.pgm_hyperparameters)
         self.decoder = self.decoder_cls(self.input_D, name="decoder")
 
-    def __call__(self, x, eval_mode=False, mask=None, initializer = None, clip = False,
+    def __call__(self, x, month_encoding=None, eval_mode=False, mask=None, initializer = None, clip = False,
                  n_iwae_samples=0, theta_rng=None, n_forecast=0, n_samples=1, fixed_samples=None):
 
         if not (mask is None):
@@ -419,7 +430,7 @@ class SVAE_SLDS(Module):
         if self.log_input:
             x = jnp.log(x)
         x_input = jnp.where(jnp.expand_dims(mask, -1), x, jnp.zeros_like(x)) if mask is not None else x
-        recog_potentials = self.encoder(x_input, eval_mode = eval_mode, mask=mask)
+        recog_potentials = self.encoder(x_input, month_encoding=month_encoding, eval_mode = eval_mode, mask=mask)
 
         if mask is not None:
             recog_potentials = mask_potentials(recog_potentials, mask)
@@ -433,7 +444,7 @@ class SVAE_SLDS(Module):
             with jax.default_matmul_precision('float32'):
                 iwae_fun = vmap(self.pgm.iwae, in_axes=[0,0,0,None,None])
                 z, prior_kl, local_kl = iwae_fun(recog_potentials, key, initializer, theta_rng, n_iwae_samples)
-            likelihood = self.decoder(z.astype(jnp.float32), eval_mode=eval_mode)
+            likelihood = self.decoder(z.astype(jnp.float32), month_encoding=month_encoding, eval_mode=eval_mode)
             return likelihood, prior_kl, local_kl, z
 
         with jax.default_matmul_precision('float32'):
@@ -451,9 +462,9 @@ class SVAE_SLDS(Module):
                 self_decoder_mask = mask[...,:-1]#.at[...,1:].set(mask[...,:-1]).at[...,0].set(1)
 
             likelihood = self.decoder(x.astype(jnp.float32)[...,:-1,:], 
-                                      z.astype(jnp.float32), eval_mode=eval_mode, mask = self_decoder_mask)
+                                      z.astype(jnp.float32), month_encoding=month_encoding, eval_mode=eval_mode, mask = self_decoder_mask)
         else:
-            likelihood = self.decoder(z.astype(jnp.float32), eval_mode=eval_mode)
+            likelihood = self.decoder(z.astype(jnp.float32), month_encoding=month_encoding, eval_mode=eval_mode)
         return likelihood, prior_kl, local_kl, (z, sur_loss) + aux
     
 class NetworkWrapper(Module):

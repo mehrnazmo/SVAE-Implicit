@@ -76,19 +76,31 @@ class SigmaDecoder(nn.Module):
     month_embedding: bool = False
 
     @nn.compact
-    def __call__(self, x, month=None, eval_mode = False):
+    def __call__(self, x, month_encoding=None, eval_mode = False):
+        # print('SigmaDecoder')
         dev = self.param('dev', nn.initializers.ones, # Initialization function
                             (self.n_outputs,), x.dtype)
-        if self.month_embedding and (month is not None):
+        if self.month_embedding and (month_encoding is not None):
             #x, month_contribution: (Bs, T, D)
-            month_contribution = Dense(x.shape[-1], name='month_dense')(month)
-            T = month_contribution.shape[1]
-            T_target = x.shape[1]
+            month_contribution = Dense(x.shape[-1], name='month_dense')(month_encoding)
+            T = month_contribution.shape[-2]
+            T_target = x.shape[-2]
             if  T != T_target: #forecasting: T_target > T
                 tile_len = T_target // T
                 month_contribution = jnp.tile(month_contribution, (1, tile_len, 1))[:, :T_target]
+            if len(x.shape) == 4:
+                month_contribution = jnp.expand_dims(month_contribution, 1)
             x = x + month_contribution
+        # print('SigmaDecoder input after month embedding: ', x.shape)
+        
         z_mean = self.network_cls(self.n_outputs, eval_mode=eval_mode)(x)
+        # print('SigmaDecoder after network: ', z_mean.shape)
+        # Determine network type
+        network_type = self.network_cls.func.__name__ ## ConvNet or DenseNet
+        if network_type == "ConvNet": 
+            ##z_mean: (5,24,h,w,1) or forecast: (1,100,36,h,w,1)
+            z_mean = z_mean.reshape(z_mean.shape[-5], z_mean.shape[-4], -1)
+        
         if eval_mode:
             return tfd.Normal(z_mean, nn.softplus(dev))
         else:
